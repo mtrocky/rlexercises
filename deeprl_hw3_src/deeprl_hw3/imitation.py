@@ -3,6 +3,7 @@ from __future__ import division, absolute_import
 from __future__ import print_function, unicode_literals
 
 from keras.models import model_from_yaml
+from keras import optimizers
 import numpy as np
 import time
 
@@ -136,3 +137,12 @@ def wrap_cartpole(env):
     unwrapped_env._reset = harder_reset
 
     return env
+
+
+def behavior_cloning(model, x_observations, y_actions, num_of_epochs=50):
+    # optimizer initialization
+    #o = optimizers.SGD(lr=0.01, clipnorm=0.5)
+    #o = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-03, decay=0.0)
+    o = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+    model.compile(loss='binary_crossentropy', optimizer=o, metrics=['accuracy'])
+    model.fit(x_observations, y_actions, epochs=num_of_epochs)
