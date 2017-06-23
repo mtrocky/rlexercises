@@ -29,6 +29,7 @@ def load_model(model_config_path, model_weights_path=None):
     if model_weights_path is not None:
         model.load_weights(model_weights_path)
 
+    print(" ****** model summary ****** ")
     model.summary()
 
     return model
@@ -56,7 +57,28 @@ def generate_expert_training_data(expert, env, num_episodes=100, render=True):
       second contains a one-hot encoding of all of the actions chosen
       by the expert for those states.
     """
-    return np.zeros((4,)), np.zeros((2,))
+    observations = []
+    expert_actions = []
+
+    for _ in range(num_episodes):
+        observation = env.reset()
+        if render:
+            env.render()
+            time.sleep(.1)
+        is_done = False
+
+        while not is_done:
+            observations.append(observation)
+            expert_action = expert.predict(np.reshape(observation, (-1, 4)))
+            one_hot_vec = np.zeros((2,))
+            one_hot_vec[np.argmax(expert_action)] = 1
+            expert_actions.append(one_hot_vec)
+            observation, _, is_done, _ = env.step(np.argmax(expert_action))
+            if render:
+                env.render()
+                time.sleep(.1)
+
+    return np.array(observations), np.array(expert_actions)
 
 
 def test_cloned_policy(env, cloned_policy, num_episodes=50, render=True):
@@ -141,8 +163,24 @@ def wrap_cartpole(env):
 
 def behavior_cloning(model, x_observations, y_actions, num_of_epochs=50):
     # optimizer initialization
-    #o = optimizers.SGD(lr=0.01, clipnorm=0.5)
-    #o = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-03, decay=0.0)
+    # o = optimizers.SGD(lr=0.01, clipnorm=0.5)
     o = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     model.compile(loss='binary_crossentropy', optimizer=o, metrics=['accuracy'])
     model.fit(x_observations, y_actions, epochs=num_of_epochs)
+
+
+def dagger(env, model, expert):
+    dagger_num_episodes = 20
+    obz, acts = generate_expert_training_data(expert, env, num_episodes=1, render=False)
+    for t in range(dagger_num_episodes):
+        behavior_cloning(model, obz, acts, num_of_epochs=5)
+        trajectory, _ = generate_expert_training_data(model, env, num_episodes=1, render=False)
+        act = expert.predict_on_batch(trajectory)
+        one_hot = np.zeros((len(act), 2))
+        for i in range(len(act)):
+            one_hot[i][np.argmax(act[i])] = 1
+        obz = np.append(obz, trajectory, axis=0)
+        acts = np.append(acts, one_hot, axis=0)
+    test_cloned_policy(env, model, render=False)
+
+
